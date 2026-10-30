@@ -1,111 +1,111 @@
 # 🎵 Lyric Widget
 
-Desktop audio-synced lyrics overlay untuk Linux dengan dukungan **Multi-Source Lyrics Engine**, transliterasi **Romaji Jepang**, pemisahan **Lead & Backing Vocals**, dan panel gradasi estetis.
+A sleek, lightweight desktop lyrics overlay for Linux featuring a **3-Tier Multi-Source Lyrics Engine**, realtime **Japanese Romaji transliteration**, **Lead & Backing Vocal separation**, and customizable aesthetic gradient styling.
 
 ![Lyric Widget Preview](assets/preview.png)
 
 ---
 
-## 🛠️ Teknologi & Spesifikasi Sistem
+## 🛠️ Tech Stack & System Specifications
 
-| Komponen | Teknologi | Keterangan |
+| Component | Technology | Description |
 | :--- | :--- | :--- |
-| **Sistem Operasi** | **Linux** (KDE Plasma 6 pada Wayland / X11) | Diuji pada Fedora Linux, kompatibel dengan semua distro KDE 6 |
-| **Frontend / UI** | **QML, QtQuick, Qt 6, KDE Kirigami** | Tampilan native, ringan, hardware-accelerated |
-| **Protokol Audio** | **MPRIS 2.0 (D-Bus)** | Sinkronisasi pemutar: Spotify, Strawberry, VLC, Browser (YouTube Music), dll. |
-| **Mesin Lirik** | **Multi-Source API** (LRCLIB, NetEase, KuGou) | Fallback 3 tingkat otomatis, 100% gratis, tanpa API key |
-| **Transliterasi** | **Hepburn Kana-to-Romaji Engine** | Otomatis mengubah Hiragana & Katakana ke huruf alfabet |
-| **Versi Standalone** | **Python 3.10+, PySide6 (Qt 6 for Python)** | Mode overlay mandiri untuk desktop non-KDE |
+| **Operating System** | **Linux** (KDE Plasma 6 on Wayland / X11) | Tested on Fedora Linux, compatible with any KDE 6 distribution |
+| **Frontend / UI** | **QML, QtQuick, Qt 6, KDE Kirigami** | Native, hardware-accelerated, lightweight UI |
+| **Audio Protocol** | **MPRIS 2.0 (D-Bus)** | Supports Spotify, Strawberry, VLC, Chromium/Firefox (YouTube Music), etc. |
+| **Lyrics Engine** | **Multi-Source REST APIs** (LRCLIB, NetEase, KuGou) | 3-tier automatic fallback; 100% free, requires no API key |
+| **Transliteration** | **Hepburn Kana-to-Romaji Engine** | Realtime client-side conversion of Hiragana and Katakana |
+| **Standalone Mode** | **Python 3.10+, PySide6 (Qt 6 for Python)** | Frameless desktop overlay for non-KDE environments |
 
 ---
 
-## 📦 Panduan Instalasi
+## 📦 Installation Guide
 
-### 1. Pemasangan Plasmoid (KDE Plasma 6 Desktop Widget)
+### 1. KDE Plasma 6 Widget (Plasmoid)
 
-> **Rekomendasi Utama**: Mode plasmoid berjalan native langsung di dalam KDE Plasma Shell, sangat hemat memori, dan otomatis aktif setiap kali desktop menyala.
+> **Recommended**: Runs natively inside the KDE Plasma Shell with zero Python dependencies, minimal memory footprint, and automatic startup.
 
-👉 **[📥 Klik di Sini untuk Mengunduh `lyric-widget.plasmoid`](https://github.com/rayyanqatrunada/Lyric-widget/raw/main/lyric-widget.plasmoid)**
+👉 **[📥 Download `lyric-widget.plasmoid`](https://github.com/rayyanqatrunada/Lyric-widget/raw/main/lyric-widget.plasmoid)**
 
-#### Cara A: Melalui Menu Pengaturan Desktop (GUI)
-1. Unduh file **[`lyric-widget.plasmoid`](https://github.com/rayyanqatrunada/Lyric-widget/raw/main/lyric-widget.plasmoid)**.
-2. Klik kanan pada area kosong di Desktop Anda > pilih **Add Widgets...** (Tambah Widget).
-3. Klik tombol **Get New Widgets...** di pojok bawah > pilih **Install from Local File...**.
-4. Arahkan dan pilih file `lyric-widget.plasmoid` yang telah diunduh.
-5. Tarik (*drag & drop*) **Lyric Widget** ke layar desktop Anda.
+#### Method A: Via Plasma Desktop GUI
+1. Download **[`lyric-widget.plasmoid`](https://github.com/rayyanqatrunada/Lyric-widget/raw/main/lyric-widget.plasmoid)**.
+2. Right-click any empty area on your Desktop > select **Add Widgets...**.
+3. Click **Get New Widgets...** at the bottom > choose **Install from Local File...**.
+4. Select the downloaded `lyric-widget.plasmoid` file.
+5. Drag and drop **Lyric Widget** onto your desktop.
 
-#### Cara B: Melalui Terminal (CLI)
+#### Method B: Via Terminal (CLI)
 ```bash
-# 1. Pasang widget ke sistem Plasma
+# Install widget
 kpackagetool6 -t Plasma/Applet -i lyric-widget.plasmoid
 
-# 2. Jika melakukan pembaruan (upgrade) di kemudian hari
+# Update existing installation
 kpackagetool6 -t Plasma/Applet -u lyric-widget.plasmoid
 
-# 3. Muat ulang Plasma Shell untuk menerapkan
+# Restart Plasma Shell to apply changes
 systemctl --user restart plasma-plasmashell
 ```
 
 ---
 
-### 2. Versi Standalone (Aplikasi Desktop Mandiri)
+### 2. Standalone Mode (Independent Desktop Overlay)
 
-> 💡 **Catatan & Cara Kerja Standalone:**  
-> Versi Standalone adalah aplikasi Python independen yang berjalan di atas jendela transparan (*click-through frameless overlay*). Versi ini ditujukan untuk pengguna Linux yang **tidak menggunakan KDE Plasma** (seperti GNOME, XFCE, Hyprland, Sway, i3, dsb.) atau untuk pengujian lirik tanpa memodifikasi desktop environment.
+> 💡 **Note & Architecture**:  
+> The Standalone version is an independent Python application running in a transparent, click-through frameless overlay window. Designed for Linux users running **desktop environments other than KDE Plasma** (e.g., GNOME, XFCE, Hyprland, Sway, i3) or for testing without installing the widget into Plasma Shell.
 
 ```bash
-# 1. Masuk ke direktori standalone
+# Navigate to standalone directory
 cd standalone
 
-# 2. Pasang dependensi Python
+# Install Python dependencies
 pip install -r requirements.txt
 
-# 3. Jalankan aplikasi overlay
+# Launch overlay
 python main_ui.py
 ```
 
-*Mode Simulasi / Pengujian Cepat (Mock Mode):*
+*Quick Test / Mock Simulation:*
 ```bash
-python main_ui.py --mock-transition   # Demo pergantian lirik otomatis
-python main_ui.py --mock-japanese     # Demo lirik bahasa Jepang & Romaji
+python main_ui.py --mock-transition   # Preview automatic lyric transitions
+python main_ui.py --mock-japanese     # Preview Japanese Kana & Romaji styling
 ```
 
 ---
 
-## ⚙️ Cara Kerja & Fitur Utama
+## ⚙️ Key Features & How It Works
 
-- **Sinkronisasi Presisi MPRIS 2.0 Realtime**  
-  Widget membaca posisi waktu lagu setiap 35ms langsung melalui D-Bus MPRIS 2.0. Pergantian baris lirik dianimasikan secara halus (*fade & vertical slide*).
+- **Precision Realtime Sync (35ms Loop)**  
+  Queries playback position via D-Bus MPRIS 2.0 every 35ms, matching LRC timestamps with smooth vertical sliding and opacity fade animations.
 
-- **Multi-Source Lyrics Engine (3-Tier Fallback)**  
-  Menggunakan rantai pencarian otomatis bertingkat:  
-  1. **LRCLIB**: Pencarian spesifik durasi & global query.  
-  2. **NetEase Cloud Music**: Database lirik raksasa (>40 juta lagu, sangat kaya lagu Barat, Asia, J-Pop/Anime, dan Indonesia).  
-  3. **KuGou Music**: Jaring pengaman cadangan format LRC ber-timestamp.  
-  *Jika satu penyedia mengalami gangguan jaringan/503, sistem otomatis mengambil dari sumber berikutnya.*
+- **3-Tier Multi-Source Lyrics Engine**  
+  Automated sequential fallback pipeline:  
+  1. **LRCLIB**: Exact duration match & query search.  
+  2. **NetEase Cloud Music**: Database of over 40 million tracks (exceptional coverage for Western, J-Pop/Anime, K-Pop, and global indie releases).  
+  3. **KuGou Music**: High-accuracy timestamped LRC fallback.  
+  *If one provider is down or returns HTTP 503, the next provider resolves the request in milliseconds.*
 
-- **Pembersihan Judul YouTube Music Otomatis**  
-  Secara cerdas membuang label video seperti `(Official Music Video)`, `[MV]`, `(Audio)`, atau format `Artis - Judul` agar pencarian lirik di API selalu akurat.
+- **Smart Media Title Sanitizer**  
+  Automatically strips video noise labels common on browser players (e.g., `(Official Music Video)`, `[MV]`, `(Lyric Video)`, `(Audio)`) and intelligently splits `Artist - Title` formats for flawless API matching.
 
-- **Grace Period 30 Detik & Kompatibilitas Browser**  
-  Saat memutar musik via browser (YouTube Music), widget **tidak akan berkedip atau hilang** saat jeda transisi antar-lagu. Widget tetap tampil saat musik di-pause, dan memberikan tenggat 30 detik sebelum memudar jika musik dihentikan.
+- **Browser Player Compatibility & 30s Grace Period**  
+  Solves the browser track transition flicker on web players like YouTube Music. The widget stays visible during song changes, remains persistent on pause, and gracefully waits 30 seconds after playback stops before fading out.
 
-- **Pemisahan Lead & Backing Vocals Bersih**  
-  Mendeteksi vokal latar secara otomatis dari tanda kurung lirik `(...)` dan memformatnya dengan tipografi sekunder yang rapi tanpa teks prefix `(Backing)` yang mengganggu.
+- **Lead & Backing Vocal Splitting**  
+  Detects backing vocals enclosed in parentheses `(...)` and styles them in clean, secondary italic typography without redundant text prefixes.
 
-- **Transliterasi Romaji Jepang Realtime**  
-  Mendeteksi karakter Kana (Hiragana & Katakana) dan langsung menampilkan teks ejaan Romaji Hepburn di bawah baris lirik asli.
+- **Realtime Japanese Romaji Transliteration**  
+  Converts Japanese Kana (Hiragana & Katakana) into clean Hepburn Romaji below the main lyric line in realtime.
 
-- **Gradasi Estetis & Background Bleed**  
-  Panel gradasi halus dengan posisi puncak kepekatan yang dapat digeser (*Peak Position* di kiri, tengah, atau kanan), opacity 0–100%, serta fitur *Bleed* agar latar belakang hitam dapat melebar ke atas/bawah melewati outline widget.
+- **Aesthetic Gradient & Outline Bleed**  
+  Customizable gradient backdrop with adjustable peak position (left, center, right), 0–100% opacity, and vertical bleed margins that expand beyond the widget boundary.
 
-- **Slider Ketinggian Judul & Tipografi Lengkap**  
-  Tersedia slider *Title Top Position* untuk mengatur letak vertikal judul lagu secara bebas, serta menu dropdown pemilihan font yang rapi dan responsif.
+- **Vertical Title Positioning & Typography**  
+  Includes a *Title Top Position* slider for fine-tuning layout balance, alongside curated font family selectors and size sliders.
 
-- **Tombol Refresh Cepat & Context Menu**  
-  Ikon tombol refresh melayang di sudut atas panel yang muncul saat hover (lengkap dengan animasi putar saat memuat lirik), serta opsi **Refresh Lyrics** saat klik kanan pada widget.
+- **Instant Refresh & Context Menu**  
+  Hoverable quick-refresh button with a smooth spinning loader animation, complemented by a native desktop right-click **Refresh Lyrics** action.
 
 ---
 
-## 📜 Lisensi
-Didistribusikan di bawah lisensi **GPL-3.0**. Silakan gunakan, modifikasi, dan kembangkan secara bebas.
+## 📜 License
+Distributed under the **GPL-3.0** License. Free to use, modify, and distribute.
