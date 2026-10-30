@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "rayy@local",
+                "Name": "Rayy"
+            }
+        ],
+        "Category": "Multimedia",
+        "Description": "Audio-synced desktop lyrics overlay with Japanese Romaji transliteration and aesthetic glow.",
+        "Icon": "view-media-lyrics",
+        "Id": "com.github.rayy.lyricwidget",
+        "License": "GPL-3.0",
+        "Name": "Lyric Widget",
+        "Version": "1.6.0",
+        "Website": "https://github.com/Rayy/lyric-widget"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "KPackageStructure": "Plasma/Applet"
+}
