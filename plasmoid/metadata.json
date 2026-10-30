@@ -12,7 +12,7 @@
         "Id": "com.github.rayy.lyricwidget",
         "License": "GPL-3.0",
         "Name": "Lyric Widget",
-        "Version": "1.6.0",
+        "Version": "1.6.2",
         "Website": "https://github.com/Rayy/lyric-widget"
     },
     "X-Plasma-API-Minimum-Version": "6.0",

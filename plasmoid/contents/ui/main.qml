@@ -347,6 +347,7 @@ PlasmoidItem {
     }
 
     // Parser lirik format LRC
+    // Parser lirik format LRC
     function parseLrc(content) {
         if (!content) return [];
         var lines = content.split(/\r?\n/);
@@ -359,6 +360,7 @@ PlasmoidItem {
 
             var timestamps = [];
             var match;
+            timestampRegex.lastIndex = 0;
             while ((match = timestampRegex.exec(line)) !== null) {
                 var mins = parseInt(match[1], 10);
                 var secs = parseInt(match[2], 10);
@@ -371,8 +373,8 @@ PlasmoidItem {
             var text = line.replace(/\[\d{2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim();
             if (!text || timestamps.length === 0) continue;
 
-            // Abaikan baris metadata/kredit yang bukan lirik nyanyian
-            if (/^(作词|作曲|编曲|制作人|监制|混音|吉他|贝斯|鼓|键盘|录音|和声|母带|发行|lrc\s*by|lyrics\s*by|music\s*by|composed\s*by|produced\s*by)\s*[:：]/i.test(text)) {
+            // Abaikan baris metadata/kredit yang bukan lirik nyanyian (Mandarin, Jepang, Inggris)
+            if (/^(作词|作詞|作曲|编曲|編曲|制作人|製作人|监制|監製|混音|吉他|贝斯|貝斯|鼓|键盘|鍵盤|录音|錄音|和声|和聲|伴唱|母带|母帶|发行|發行|企划|企劃|统筹|統籌|文案|封面|插画|插畫|设计|設計|题字|題字|策划|策劃|出品|提供|原唱|演唱|lrc\s*by|lyrics\s*by|music\s*by|composed\s*by|produced\s*by|arranged\s*by)\s*[:：]/i.test(text)) {
                 continue;
             }
 
@@ -403,6 +405,8 @@ PlasmoidItem {
     function sanitizeTrackTitle(raw) {
         if (!raw) return "";
         var s = raw;
+        // Ganti konjungsi YouTube Music Indonesia ("Pretty Patterns dan Lorien" -> "Pretty Patterns & Lorien")
+        s = s.replace(/\s+dan\s+/gi, " & ");
         // Hapus label video seperti (Official Music Video), [MV], (Lyric Video), dll.
         s = s.replace(/[\(\[](?:official\s*(?:music\s*)?video|official\s*audio|music\s*video|lyric\s*video|lyrics|audio|mv|visualizer|prod\.?|clip\s*officiel)[^\)\]]*[\)\]]/gi, "");
         // Hapus (feat. ...) atau (ft. ...)
@@ -412,79 +416,152 @@ PlasmoidItem {
         return s.replace(/\s+/g, " ").trim();
     }
 
+    function getArtistVariations(rawArtist) {
+        if (!rawArtist) return [];
+        var clean = sanitizeTrackTitle(rawArtist);
+        var vars = [clean];
+
+        // Ganti konjungsi " dan " dengan " & "
+        var withAmp = clean.replace(/\s+dan\s+/gi, " & ");
+        if (withAmp !== clean && vars.indexOf(withAmp) === -1) {
+            vars.push(withAmp);
+        }
+
+        // Pecah jika ada kolaborasi multi-artis (mis. "Lorien & Pretty Patterns" atau "Pretty Patterns & Lorien")
+        var parts = clean.split(/\s*(?:&|,|\/)\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
+        if (parts.length === 2) {
+            // Tukar urutan: B & A
+            var inverted = parts[1] + " & " + parts[0];
+            if (vars.indexOf(inverted) === -1) vars.push(inverted);
+            if (vars.indexOf(parts[0]) === -1) vars.push(parts[0]);
+            if (vars.indexOf(parts[1]) === -1) vars.push(parts[1]);
+        } else if (parts.length > 2) {
+            if (vars.indexOf(parts[0]) === -1) vars.push(parts[0]);
+            var joinedAmp = parts.join(" & ");
+            if (vars.indexOf(joinedAmp) === -1) vars.push(joinedAmp);
+        }
+
+        return vars;
+    }
+
+    function normalizeForCompare(str) {
+        if (!str) return "";
+        return str.toLowerCase().replace(/[^\w\s\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/g, "").replace(/\s+/g, " ").trim();
+    }
+
+    function isCJK(str) {
+        return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(str);
+    }
+
+    // Memverifikasi kecocokan kandidat untuk mencegah false positive (lagu Mandarin/Jepang untuk lagu barat)
+    function isCandidateMatch(candTitle, candArtist, targetTitle, targetArtist) {
+        if (!candTitle || !targetTitle) return false;
+        var normCandT = normalizeForCompare(candTitle);
+        var normTargetT = normalizeForCompare(targetTitle);
+        if (!normCandT || !normTargetT) return false;
+
+        var targetIsPureLatin = !isCJK(normTargetT);
+        var candHasCJK = isCJK(normCandT);
+
+        var titleMatches = (normCandT === normTargetT) ||
+                           (normCandT.indexOf(normTargetT) !== -1) ||
+                           (normTargetT.indexOf(normCandT) !== -1);
+
+        if (!titleMatches) {
+            var words = normTargetT.split(" ").filter(function(w) { return w.length > 2; });
+            if (words.length > 0) {
+                var allIn = true;
+                for (var wi = 0; wi < words.length; wi++) {
+                    if (normCandT.indexOf(words[wi]) === -1) {
+                        allIn = false;
+                        break;
+                    }
+                }
+                if (allIn) titleMatches = true;
+            }
+        }
+
+        // Jika lagu asli adalah pure Latin (Inggris), tolak mutlak jika judul kandidat full CJK tanpa kecocokan kata
+        if (targetIsPureLatin && candHasCJK && !titleMatches) {
+            return false;
+        }
+
+        return titleMatches;
+    }
+
+    function getNormalizedTrackInfo() {
+        var rawT = root.title || "";
+        var rawA = root.artist || "";
+        var cleanT = sanitizeTrackTitle(rawT);
+        var cleanA = sanitizeTrackTitle(rawA);
+
+        // Jika artis kosong atau generik (mis. "YouTube") dan judul format "Artis - Lagu"
+        if ((!cleanA || cleanA.toLowerCase() === "youtube" || cleanA.toLowerCase() === "unknown") && cleanT.indexOf(" - ") !== -1) {
+            var dashParts = cleanT.split(/\s+-\s+/);
+            if (dashParts.length >= 2) {
+                cleanA = dashParts[0].trim();
+                cleanT = dashParts.slice(1).join(" - ").trim();
+            }
+        }
+
+        return {
+            title: cleanT,
+            artist: cleanA,
+            cacheKey: (cleanT + "---" + cleanA).toLowerCase()
+        };
+    }
+
+    function isCurrentTrack(cacheKey) {
+        return cacheKey === getNormalizedTrackInfo().cacheKey;
+    }
+
     // Fungsi refresh lirik (dapat dipanggil dari tombol atau menu klik kanan)
     function refreshLyrics(clearAll) {
         if (clearAll) {
             lyricsCache = ({});
         }
-        var curTitle = root.title;
-        var curArtist = root.artist;
-        var curAlbum = root.album;
-        var curDuration = root.duration;
-
-        var cleanT = sanitizeTrackTitle(curTitle);
-        var cleanA = sanitizeTrackTitle(curArtist);
-        var k = (cleanT + "---" + cleanA).toLowerCase();
-        delete lyricsCache[k];
+        var info = getNormalizedTrackInfo();
+        delete lyricsCache[info.cacheKey];
 
         lastTrackKey = "";
         parsedLyrics = [];
         currentLyricIndex = -1;
         lyricChanged("", "", false, false, "", false);
 
-        if (curTitle.length > 0) {
-            fetchLyrics(curTitle, curArtist, curAlbum, curDuration);
+        if (info.title.length > 0) {
+            fetchLyrics(info.title, info.artist, root.album, root.duration);
         }
     }
 
     function applyLyricData(data, cacheKey) {
-        if (!data) return false;
+        if (!data || !isCurrentTrack(cacheKey)) return false;
+
+        // Hanya menerima lirik yang benar-benar tersinkronisasi (memiliki timestamp waktu nyata)
         if (data.syncedLyrics && data.syncedLyrics.trim().length > 0) {
             var parsed = parseLrc(data.syncedLyrics);
             if (parsed.length > 0) {
                 lyricsCache[cacheKey] = parsed;
-                parsedLyrics = parsed;
-                currentLyricIndex = -1;
+                if (isCurrentTrack(cacheKey)) {
+                    parsedLyrics = parsed;
+                    currentLyricIndex = -1;
+                }
                 return true;
             }
-        } else if (data.plainLyrics && data.plainLyrics.trim().length > 0) {
-            var plain = [{
-                timestamp: 0.0,
-                lead: data.plainLyrics.split("\n")[0] || "",
-                backing: "",
-                hasBacking: false,
-                isBackingOnly: false,
-                romaji: "",
-                hasRomaji: false,
-                original: data.plainLyrics
-            }];
-            lyricsCache[cacheKey] = plain;
-            parsedLyrics = plain;
-            currentLyricIndex = -1;
-            return true;
         }
         return false;
     }
 
     // =========================================================================
-    // MULTI-SOURCE LYRICS ENGINE: LRCLIB -> NETEASE CLOUD MUSIC -> KUGOU MUSIC
+    // MULTI-SOURCE ENGINE BERBASIS LIRIK SINKRON: LRCLIB -> NETEASE (VERIFIED)
     // =========================================================================
 
     function fetchLyrics(trackTitle, trackArtist, trackAlbum, trackDuration) {
-        if (!trackTitle) return;
-        var cleanTitle = sanitizeTrackTitle(trackTitle);
-        var cleanArtist = sanitizeTrackTitle(trackArtist);
+        var trackInfo = getNormalizedTrackInfo();
+        var cleanTitle = trackInfo.title;
+        var cleanArtist = trackInfo.artist;
+        var cacheKey = trackInfo.cacheKey;
 
-        // Jika artis kosong atau generik (mis. "YouTube") dan judul format "Artis - Lagu"
-        if ((!cleanArtist || cleanArtist.toLowerCase() === "youtube" || cleanArtist.toLowerCase() === "unknown") && cleanTitle.indexOf(" - ") !== -1) {
-            var dashParts = cleanTitle.split(/\s+-\s+/);
-            if (dashParts.length >= 2) {
-                cleanArtist = dashParts[0].trim();
-                cleanTitle = dashParts.slice(1).join(" - ").trim();
-            }
-        }
-
-        var cacheKey = (cleanTitle + "---" + cleanArtist).toLowerCase();
+        if (!cleanTitle) return;
 
         if (lyricsCache[cacheKey]) {
             parsedLyrics = lyricsCache[cacheKey];
@@ -494,186 +571,188 @@ PlasmoidItem {
 
         isFetchingLyrics = true;
 
-        // Mulai rantai multi-sumber: 1. LRCLIB -> 2. NetEase -> 3. KuGou
+        // Mulai pencarian lirik tersinkronisasi presisi:
+        // 1. LRCLIB (dengan variasi urutan kolaborasi artis & pencocokan durasi)
+        // 2. NetEase (fallback verifikasi ketat hanya untuk lirik sinkron asli)
         fetchFromLrclib(cleanTitle, cleanArtist, trackDuration, cacheKey);
     }
 
-    // Sumber 1: LRCLIB (Database Komunitas Terbuka)
+    // Sumber 1: LRCLIB (Lirik tersinkronisasi presisi milidetik)
     function fetchFromLrclib(cleanTitle, cleanArtist, trackDuration, cacheKey) {
-        var queryParams = "track_name=" + encodeURIComponent(cleanTitle) + "&artist_name=" + encodeURIComponent(cleanArtist);
-        if (trackDuration > 0) queryParams += "&duration=" + Math.round(trackDuration);
-        var url1 = "https://lrclib.net/api/get?" + queryParams;
+        var artistVariations = getArtistVariations(cleanArtist);
+        if (artistVariations.length === 0) artistVariations = [""];
 
-        var xhr1 = new XMLHttpRequest();
-        xhr1.open("GET", url1, true);
-        xhr1.setRequestHeader("User-Agent", "LyricWidget-KDE/1.0");
+        var tryIndex = 0;
 
-        xhr1.onreadystatechange = function() {
-            if (xhr1.readyState === XMLHttpRequest.DONE) {
-                if (xhr1.status === 200) {
-                    try {
-                        var data = JSON.parse(xhr1.responseText);
-                        if (applyLyricData(data, cacheKey)) {
-                            root.isFetchingLyrics = false;
-                            return;
-                        }
-                    } catch (e) {}
+        function tryNextGet() {
+            if (!isCurrentTrack(cacheKey)) return;
+
+            if (tryIndex >= artistVariations.length) {
+                // Jika GET spesifik dengan semua variasi nama artis belum menemukan, coba LRCLIB search
+                tryLrclibSearch();
+                return;
+            }
+
+            var art = artistVariations[tryIndex++];
+            var queryParams = "track_name=" + encodeURIComponent(cleanTitle);
+            if (art.length > 0) queryParams += "&artist_name=" + encodeURIComponent(art);
+            if (trackDuration > 0) queryParams += "&duration=" + Math.round(trackDuration);
+            var urlGet = "https://lrclib.net/api/get?" + queryParams;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", urlGet, true);
+            xhr.setRequestHeader("User-Agent", "LyricWidget-KDE/1.0");
+
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (!isCurrentTrack(cacheKey)) return;
+
+                    if (xhr.status === 200) {
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            if (applyLyricData(data, cacheKey)) {
+                                root.isFetchingLyrics = false;
+                                return;
+                            }
+                        } catch (e) {}
+                    }
+                    tryNextGet();
                 }
+            };
+            xhr.send();
+        }
 
-                // Coba search LRCLIB jika get spesifik gagal
-                var q = cleanTitle + (cleanArtist ? (" " + cleanArtist) : "");
-                var urlSearch = "https://lrclib.net/api/search?q=" + encodeURIComponent(q);
-                var xhrSearch = new XMLHttpRequest();
-                xhrSearch.open("GET", urlSearch, true);
-                xhrSearch.setRequestHeader("User-Agent", "LyricWidget-KDE/1.0");
+        function tryLrclibSearch() {
+            if (!isCurrentTrack(cacheKey)) return;
 
-                xhrSearch.onreadystatechange = function() {
-                    if (xhrSearch.readyState === XMLHttpRequest.DONE) {
-                        if (xhrSearch.status === 200) {
-                            try {
-                                var list = JSON.parse(xhrSearch.responseText);
-                                if (Array.isArray(list) && list.length > 0) {
-                                    for (var i = 0; i < list.length; i++) {
-                                        if (applyLyricData(list[i], cacheKey)) {
+            var primaryArt = artistVariations[0] || "";
+            var q = cleanTitle + (primaryArt ? (" " + primaryArt) : "");
+            var urlSearch = "https://lrclib.net/api/search?q=" + encodeURIComponent(q);
+
+            var xhrSearch = new XMLHttpRequest();
+            xhrSearch.open("GET", urlSearch, true);
+            xhrSearch.setRequestHeader("User-Agent", "LyricWidget-KDE/1.0");
+
+            xhrSearch.onreadystatechange = function() {
+                if (xhrSearch.readyState === XMLHttpRequest.DONE) {
+                    if (!isCurrentTrack(cacheKey)) return;
+
+                    if (xhrSearch.status === 200) {
+                        try {
+                            var list = JSON.parse(xhrSearch.responseText);
+                            if (Array.isArray(list) && list.length > 0) {
+                                for (var i = 0; i < list.length; i++) {
+                                    var cand = list[i];
+                                    if (cand.syncedLyrics && isCandidateMatch(cand.trackName, cand.artistName, cleanTitle, cleanArtist)) {
+                                        if (applyLyricData(cand, cacheKey)) {
                                             root.isFetchingLyrics = false;
                                             return;
                                         }
                                     }
                                 }
-                            } catch (e) {}
-                        }
-
-                        // Jika LRCLIB tidak menemukan atau error 503, fallback ke Sumber 2: NetEase
-                        fetchFromNetease(cleanTitle, cleanArtist, trackDuration, cacheKey);
+                            }
+                        } catch (e) {}
                     }
-                };
-                xhrSearch.send();
-            }
-        };
 
-        xhr1.send();
+                    // Jika LRCLIB tidak menemukan lirik sinkron, coba Sumber 2: NetEase (hanya lirik sinkron terverifikasi)
+                    fetchFromNetease(cleanTitle, cleanArtist, trackDuration, cacheKey);
+                }
+            };
+            xhrSearch.send();
+        }
+
+        tryNextGet();
     }
 
-    // Sumber 2: NetEase Cloud Music (Basis data raksasa global & Asia, gratis & ringan)
+    // Sumber 2: NetEase Cloud Music (Basis data cadangan - HANYA menerima lirik sinkron berstempel waktu & judul cocok)
     function fetchFromNetease(cleanTitle, cleanArtist, trackDuration, cacheKey) {
-        var q = cleanTitle + (cleanArtist ? (" " + cleanArtist) : "");
-        var searchUrl = "http://music.163.com/api/search/get/";
-        var postData = "s=" + encodeURIComponent(q) + "&type=1&offset=0&total=true&limit=3";
+        var artistVariations = getArtistVariations(cleanArtist);
+        var primaryArt = artistVariations[0] || "";
+        var q = cleanTitle + (primaryArt ? (" " + primaryArt) : "");
+        var searchUrl = "https://music.163.com/api/search/get/";
+        var postData = "s=" + encodeURIComponent(q) + "&type=1&offset=0&total=true&limit=5";
 
         var xhrSearch = new XMLHttpRequest();
         xhrSearch.open("POST", searchUrl, true);
         xhrSearch.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         xhrSearch.setRequestHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)");
-        xhrSearch.setRequestHeader("Referer", "http://music.163.com/");
+        xhrSearch.setRequestHeader("Referer", "https://music.163.com/");
 
         xhrSearch.onreadystatechange = function() {
             if (xhrSearch.readyState === XMLHttpRequest.DONE) {
+                if (!isCurrentTrack(cacheKey)) return;
+
                 if (xhrSearch.status === 200) {
                     try {
                         var res = JSON.parse(xhrSearch.responseText);
                         var songs = res && res.result && res.result.songs;
                         if (Array.isArray(songs) && songs.length > 0) {
-                            var songId = songs[0].id;
-                            var lyricUrl = "http://music.163.com/api/song/lyric?os=pc&id=" + songId + "&lv=-1&kv=-1&tv=-1";
-                            var xhrLyric = new XMLHttpRequest();
-                            xhrLyric.open("GET", lyricUrl, true);
-                            xhrLyric.setRequestHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)");
-                            xhrLyric.setRequestHeader("Referer", "http://music.163.com/");
-
-                            xhrLyric.onreadystatechange = function() {
-                                if (xhrLyric.readyState === XMLHttpRequest.DONE) {
-                                    if (xhrLyric.status === 200) {
-                                        try {
-                                            var ldata = JSON.parse(xhrLyric.responseText);
-                                            var rawLrc = ldata && ldata.lrc && ldata.lrc.lyric;
-                                            if (rawLrc && rawLrc.trim().length > 0) {
-                                                var parsed = parseLrc(rawLrc);
-                                                if (parsed.length > 0) {
-                                                    lyricsCache[cacheKey] = parsed;
-                                                    parsedLyrics = parsed;
-                                                    currentLyricIndex = -1;
-                                                    root.isFetchingLyrics = false;
-                                                    return;
-                                                }
-                                            }
-                                        } catch (e) {}
-                                    }
-                                    // Jika NetEase tidak ada lirik, fallback ke Sumber 3: KuGou
-                                    fetchFromKugou(cleanTitle, cleanArtist, trackDuration, cacheKey);
+                            // Cari lagu yang terverifikasi cocok dengan judul lagu yang dicari
+                            var matchedSong = null;
+                            for (var si = 0; si < songs.length; si++) {
+                                var candSong = songs[si];
+                                if (isCandidateMatch(candSong.name, candSong.artists, cleanTitle, cleanArtist)) {
+                                    matchedSong = candSong;
+                                    break;
                                 }
-                            };
-                            xhrLyric.send();
-                            return;
+                            }
+
+                            if (matchedSong) {
+                                var songId = matchedSong.id;
+                                var lyricUrl = "https://music.163.com/api/song/lyric?os=pc&id=" + songId + "&lv=-1&kv=-1&tv=-1";
+                                var xhrLyric = new XMLHttpRequest();
+                                xhrLyric.open("GET", lyricUrl, true);
+                                xhrLyric.setRequestHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)");
+                                xhrLyric.setRequestHeader("Referer", "https://music.163.com/");
+
+                                xhrLyric.onreadystatechange = function() {
+                                    if (xhrLyric.readyState === XMLHttpRequest.DONE) {
+                                        if (!isCurrentTrack(cacheKey)) return;
+
+                                        if (xhrLyric.status === 200) {
+                                            try {
+                                                var ldata = JSON.parse(xhrLyric.responseText);
+                                                var rawLrc = ldata && ldata.lrc && ldata.lrc.lyric;
+                                                // Pastikan benar-benar lirik sinkron bertimestamp [mm:ss.xx]
+                                                if (rawLrc && /\[\d{2}:\d{2}/.test(rawLrc)) {
+                                                    var parsed = parseLrc(rawLrc);
+                                                    if (parsed.length > 0) {
+                                                        lyricsCache[cacheKey] = parsed;
+                                                        if (isCurrentTrack(cacheKey)) {
+                                                            parsedLyrics = parsed;
+                                                            currentLyricIndex = -1;
+                                                        }
+                                                        root.isFetchingLyrics = false;
+                                                        return;
+                                                    }
+                                                }
+                                            } catch (e) {}
+                                        }
+                                        onAllSourcesFailed(cacheKey);
+                                    }
+                                };
+                                xhrLyric.send();
+                                return;
+                            }
                         }
                     } catch (e) {}
                 }
-                // Jika pencarian NetEase gagal, coba Sumber 3: KuGou
-                fetchFromKugou(cleanTitle, cleanArtist, trackDuration, cacheKey);
+                onAllSourcesFailed(cacheKey);
             }
         };
 
         xhrSearch.send(postData);
     }
 
-    // Sumber 3: KuGou Music (Basis data cadangan dengan format lrc sinkron)
-    function fetchFromKugou(cleanTitle, cleanArtist, trackDuration, cacheKey) {
-        var q = (cleanArtist ? (cleanArtist + " - ") : "") + cleanTitle;
-        var durMs = trackDuration > 0 ? Math.round(trackDuration * 1000) : 0;
-        var searchUrl = "http://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=" + encodeURIComponent(q) + "&duration=" + durMs + "&hash=";
-
-        var xhrSearch = new XMLHttpRequest();
-        xhrSearch.open("GET", searchUrl, true);
-        xhrSearch.setRequestHeader("User-Agent", "Mozilla/5.0");
-
-        xhrSearch.onreadystatechange = function() {
-            if (xhrSearch.readyState === XMLHttpRequest.DONE) {
-                if (xhrSearch.status === 200) {
-                    try {
-                        var res = JSON.parse(xhrSearch.responseText);
-                        var candidates = res && res.candidates;
-                        if (Array.isArray(candidates) && candidates.length > 0) {
-                            var cand = candidates[0];
-                            var dlUrl = "http://lyrics.kugou.com/download?ver=1&client=pc&id=" + cand.id + "&accesskey=" + cand.accesskey + "&fmt=lrc&charset=utf8";
-                            var xhrDl = new XMLHttpRequest();
-                            xhrDl.open("GET", dlUrl, true);
-                            xhrDl.setRequestHeader("User-Agent", "Mozilla/5.0");
-
-                            xhrDl.onreadystatechange = function() {
-                                if (xhrDl.readyState === XMLHttpRequest.DONE) {
-                                    root.isFetchingLyrics = false;
-                                    if (xhrDl.status === 200) {
-                                        try {
-                                            var ddata = JSON.parse(xhrDl.responseText);
-                                            var b64Content = ddata && ddata.content;
-                                            if (b64Content) {
-                                                var rawLrc = "";
-                                                try {
-                                                    rawLrc = decodeURIComponent(escape(Qt.atob(b64Content)));
-                                                } catch (ex) {
-                                                    rawLrc = Qt.atob(b64Content);
-                                                }
-                                                var parsed = parseLrc(rawLrc);
-                                                if (parsed.length > 0) {
-                                                    lyricsCache[cacheKey] = parsed;
-                                                    parsedLyrics = parsed;
-                                                    currentLyricIndex = -1;
-                                                    return;
-                                                }
-                                            }
-                                        } catch (e) {}
-                                    }
-                                }
-                            };
-                            xhrDl.send();
-                            return;
-                        }
-                    } catch (e) {}
-                }
-                root.isFetchingLyrics = false;
-            }
-        };
-
-        xhrSearch.send();
+    function onAllSourcesFailed(cacheKey) {
+        if (isCurrentTrack(cacheKey)) {
+            root.parsedLyrics = [];
+            root.currentLyricIndex = -1;
+            root.activeLead = "";
+            root.activeBacking = "";
+            root.hasBacking = false;
+            root.isFetchingLyrics = false;
+        }
     }
 
     // =========================================================================

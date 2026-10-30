@@ -85,6 +85,16 @@ def get_artist_variants(artist: str) -> list[str]:
 
     variants = [clean_artist]
 
+    # Bersihkan pola konjungsi lokal YouTube Music Indonesia (mis. " dan ")
+    with_amp = re.sub(r"\s+dan\s+", " & ", clean_artist, flags=re.IGNORECASE).strip()
+    if with_amp and with_amp.lower() != clean_artist.lower() and with_amp not in variants:
+        variants.append(with_amp)
+
+    # Ekstrak artis utama sebelum pemisah multi-artis
+    primary = re.split(r"\s*(?:&|,|\/|feat\.?|ft\.?|featuring|dan)\s*", clean_artist, flags=re.IGNORECASE)[0].strip()
+    if primary and primary.lower() != clean_artist.lower() and primary not in variants and len(primary) >= 2:
+        variants.append(primary)
+
     # Bersihkan pola kurung atau pemisah feat
     base = VERSION_PATTERN.sub("", clean_artist)
     base = FEAT_DASH_PATTERN.sub("", base)
@@ -92,7 +102,7 @@ def get_artist_variants(artist: str) -> list[str]:
         r"\s+(?:feat\.?|ft\.?|featuring)\s+.+$", "", base, flags=re.IGNORECASE
     ).strip()
 
-    if base and base.lower() != clean_artist.lower() and len(base) >= 2:
+    if base and base.lower() != clean_artist.lower() and len(base) >= 2 and base not in variants:
         variants.append(base)
 
     return variants
